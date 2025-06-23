@@ -1,9 +1,11 @@
 import { ClientException, LoggerFactory, LoggingLevel } from '@org-quicko/core';
 import winston from 'winston';
-import { CreateSignUp, SignUp as SignUpBean } from '@org-quicko/cliq-core';
+import { SignUp as SignUpBean } from '@org-quicko/cliq-core';
 import { APIURL } from '../../resource';
 import { RestClient } from '../RestClient';
 import { CliqCredentials } from '../../beans';
+
+export type CreateSignUp = Pick<SignUpBean, 'refVal' | 'email' | 'firstName' | 'lastName' | 'utmParams' | 'externalId' | 'phone'>;
 
 export class SignUp extends RestClient {
     private logger: winston.Logger;

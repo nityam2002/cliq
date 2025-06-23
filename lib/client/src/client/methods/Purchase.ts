@@ -1,10 +1,12 @@
 import { ClientException, LoggerFactory } from '@org-quicko/core';
 import winston from 'winston';
-import { CreatePurchase, Purchase as PurchaseBean } from '@org-quicko/cliq-core';
+import { Purchase as PurchaseBean } from '@org-quicko/cliq-core';
 import { APIURL } from '../../resource';
 import { RestClient } from '../RestClient';
 import { CliqCredentials } from '../../beans';
 import { LoggingLevel } from '@org-quicko/core';
+
+export type CreatePurchase = Pick<PurchaseBean, 'refVal' | 'amount' | 'firstName' | 'lastName' | 'email' | 'externalId' | 'utmParams' | 'itemId' | 'phone'>;
 
 export class Purchase extends RestClient {
     private logger: winston.Logger;

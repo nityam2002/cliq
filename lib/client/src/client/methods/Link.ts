@@ -1,11 +1,13 @@
 import { ClientException, LoggerFactory, LoggingLevel } from '@org-quicko/core';
 import winston from 'winston';
-import { CreateLink, Link as LinkBean } from '@org-quicko/cliq-core';
+import { Link as LinkBean } from '@org-quicko/cliq-core';
 import { PromoterWorkbook } from '@org-quicko/cliq-sheet-core/Promoter/beans';
 import { plainToInstance } from 'class-transformer';
 import { APIURL } from '../../resource';
 import { RestClient } from '../RestClient';
 import { CliqCredentials } from '../../beans';
+
+export type CreateLink = Pick<LinkBean, 'refVal' | 'name' | 'status'>;
 
 export class Link extends RestClient {
     private logger: winston.Logger;

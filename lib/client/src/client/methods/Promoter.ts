@@ -1,10 +1,15 @@
 import { ClientException, LoggerFactory, LoggingLevel } from '@org-quicko/core';
 import winston from 'winston';
-import { CreatePromoter, Promoter as PromoterBean, RegisterForProgram } from '@org-quicko/cliq-core';
+import { Promoter as PromoterBean } from '@org-quicko/cliq-core';
 import { plainToInstance } from 'class-transformer';
 import { APIURL } from '../../resource';
 import { RestClient } from '../RestClient';
 import { CliqCredentials } from '../../beans';
+import { Options } from '../../interface';
+
+export type CreatePromoter = Pick<PromoterBean, 'name' | 'logoUrl'>;
+
+export type RegisterForProgram = Pick<PromoterBean, 'acceptedTermsAndConditions'>;
 
 export class Promoter extends RestClient {
     private logger: winston.Logger;
@@ -68,11 +73,16 @@ export class Promoter extends RestClient {
             this.logger.info(`START Client : ${this.constructor.name},${this.registerPromoter.name}`);
             this.logger.debug(`Request`, { program_id: programId, promoter_id: promoterId });
 
-			const options = {
+			const options: Options = {
 				params: [programId, promoterId],
 			};
 
-			if (circleId) options['queryParams'] = [circleId];
+			if (circleId) {
+				const queryParams: Record<string, string> = {
+					circle_id: circleId,
+				};
+				options.queryParams = queryParams;
+			}
 
             const response = await super.post(
 				APIURL.REGISTER_PROMOTER_IN_PROGRAM, 
