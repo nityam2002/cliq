@@ -74,6 +74,7 @@ describe('Cliq Client tests.', () => {
         const body = new Link();
 	
 		body.setName(`Client Test User's Link`);
+		// body.setRefVal(`John-i2c3`); // a link that already exists, so that we can test the error handling
 		body.setRefVal(`testrefval-${  random4AlphaNumChars}`);
         
 		refVal = body.refVal!;

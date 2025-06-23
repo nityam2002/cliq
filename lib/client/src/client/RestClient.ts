@@ -62,7 +62,7 @@ export class RestClient {
 			.post(Endpoint.build(this.baseUrl, url, options.params, options.queryParams), body, { headers })
 			.then((response) => response.data)
 			.catch((error) => {
-				throw new ClientException(error.response.data.message, error.response.status);
+				throw new ClientException(error.response.data.message, undefined, error.response.status);
 			});
 	}
 
