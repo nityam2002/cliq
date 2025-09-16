@@ -1,19 +1,21 @@
 import { ProgramSummaryList } from "@org-quicko/cliq-sheet-core/Program/beans";
 import { formatDate } from "../../utils";
-import { conversionTypeEnum, dateFormatEnum } from "../../enums";
-import { Commission, Program, Purchase, SignUp } from "../../entities";
+import { dateFormatEnum } from "../../enums";
+import { Program } from "../../entities";
 import { ConverterException } from "@org-quicko/core";
 
 export interface IProgramSummaryListConverterInput {
-	startDate: Date;
-	endDate: Date;
-	programId: string;
-	numPromoters: number;
-	program: Program | null;
-	signUps: SignUp[];
-	purchases: Purchase[];
-	commissions: Commission[];
-	dateFormat: dateFormatEnum;
+        startDate: Date;
+        endDate: Date;
+        programId: string;
+        numPromoters: number;
+        program: Program | null;
+        totalSignUps: number;
+        totalPurchases: number;
+        totalSignUpCommission: number;
+        totalPurchaseCommission: number;
+        totalRevenue: number;
+        dateFormat: dateFormatEnum;
 }
 
 export class ProgramSummaryListConverter {
@@ -23,46 +25,29 @@ export class ProgramSummaryListConverter {
 		programId,
 		numPromoters,
 		program,
-		signUps,
-		purchases,
-		commissions,
-		dateFormat,
-	}: IProgramSummaryListConverterInput) {
-		try {
-			const programSummaryList = new ProgramSummaryList();
+                totalSignUps,
+                totalPurchases,
+                totalSignUpCommission,
+                totalPurchaseCommission,
+                totalRevenue,
+                dateFormat,
+        }: IProgramSummaryListConverterInput) {
+                try {
+                        const programSummaryList = new ProgramSummaryList();
 
-			const totalSignUps = signUps.length;
-			const totalPurchases = purchases.length;
-			let totalRevenue = 0;
-			let totalPurchasesCommission = 0;
-			let totalSignUpsCommission = 0;
+                        const totalPromoters = numPromoters;
+                        const totalCommission = totalSignUpCommission + totalPurchaseCommission;
 
-			const totalPromoters = numPromoters;
-			if (program) {
-				commissions.forEach(commission => {
-					if (commission.conversionType === conversionTypeEnum.SIGNUP) {
-						totalSignUpsCommission += commission.amount;
-					}
-					else if (commission.conversionType === conversionTypeEnum.PURCHASE) {
-						totalPurchasesCommission += commission.amount;
-					}
-				})
-
-				purchases.forEach(purchase => {
-					totalRevenue += purchase.amount;
-				});
-			}
-
-			programSummaryList.addFrom(formatDate(startDate, dateFormat));
-			programSummaryList.addTo(formatDate(endDate, dateFormat));
-			programSummaryList.addPromoters(totalPromoters)
-			programSummaryList.addProgramId(programId);
-			programSummaryList.addSignups(totalSignUps);
-			programSummaryList.addCommissionOnSignups(totalSignUpsCommission);
-			programSummaryList.addPurchases(totalPurchases);
-			programSummaryList.addCommissionOnPurchases(totalPurchasesCommission);
-			programSummaryList.addRevenue(totalRevenue);
-			programSummaryList.addTotalCommission(totalSignUpsCommission + totalPurchasesCommission);
+                        programSummaryList.addFrom(formatDate(startDate, dateFormat));
+                        programSummaryList.addTo(formatDate(endDate, dateFormat));
+                        programSummaryList.addPromoters(totalPromoters)
+                        programSummaryList.addProgramId(programId);
+                        programSummaryList.addSignups(totalSignUps);
+                        programSummaryList.addCommissionOnSignups(totalSignUpCommission);
+                        programSummaryList.addPurchases(totalPurchases);
+                        programSummaryList.addCommissionOnPurchases(totalPurchaseCommission);
+                        programSummaryList.addRevenue(totalRevenue);
+                        programSummaryList.addTotalCommission(totalCommission);
 
 			return programSummaryList;
 
