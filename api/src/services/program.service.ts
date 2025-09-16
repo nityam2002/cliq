@@ -5,7 +5,7 @@ import {
 	NotFoundException,
 	UnauthorizedException,
 } from '@nestjs/common';
-import { DataSource, FindOptionsRelations, Repository, FindOptionsWhere, In, Between } from 'typeorm';
+import { DataSource, FindOptionsRelations, Repository, FindOptionsWhere } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Circle, Commission, Program, Promoter, Purchase, ReferralView, SignUp, User } from '../entities';
 import { CreateUserDto } from '../dtos';
@@ -23,7 +23,7 @@ import { UserConverter } from '../converters/user.converter';
 import { QueryOptionsInterface } from '../interfaces/queryOptions.interface';
 import { PurchaseConverter } from '../converters/purchase/purchase.dto.converter';
 import { CommissionConverter } from '../converters/commission/commission.dto.converter';
-import { userRoleEnum, statusEnum, visibilityEnum } from '../enums';
+import { conversionTypeEnum, userRoleEnum, statusEnum, visibilityEnum } from '../enums';
 import { LoggerService } from './logger.service';
 import * as bcrypt from 'bcrypt';
 import { SALT_ROUNDS } from 'src/constants';
@@ -32,7 +32,8 @@ import { defaultQueryOptions } from 'src/constants';
 import { snakeCaseToHumanReadable } from 'src/utils';
 import { subjectsType } from 'src/types';
 import { SignUpConverter } from 'src/converters/signup/signUp.dto.converter';
-import { ProgramWorkbookConverter } from 'src/converters/program/program.workbook.converter';
+import { ProgramSummaryMetrics, ProgramWorkbookConverter } from 'src/converters/program/program.workbook.converter';
+import { PromoterAggregatedMetrics } from 'src/converters/program/promoter.table.converter';
 import { ProgramWorkbook } from '@org-quicko/cliq-sheet-core/Program/beans';
 import { ReferralConverter } from 'src/converters/referral.converter';
 
@@ -659,107 +660,139 @@ export class ProgramService {
 	) {
 		this.logger.info(`START: getProgramReport service`);
 
-		// const query = this.programRepository
-		// 	.createQueryBuilder("program")
-		// 	.leftJoinAndSelect("program.programPromoters", "programPromoters")
-		// 	.leftJoinAndSelect("programPromoters.promoter", "promoter")
-		// 	.leftJoinAndSelect(
-		// 		"promoter.signUps",
-		// 		"signUps",
-		// 		"signUps.createdAt >= :start AND signUps.createdAt <= :end"
-		// 	)
-		// 	.leftJoinAndSelect(
-		// 		"promoter.purchases",
-		// 		"purchases",
-		// 		"purchases.createdAt >= :start AND purchases.createdAt <= :end"
-		// 	)
-		// 	.leftJoinAndSelect(
-		// 		"promoter.commissions",
-		// 		"commissions",
-		// 		"commissions.createdAt >= :start AND commissions.createdAt <= :end"
-		// 	)
-		// 	.where("program.programId = :programId AND promoter.createdAt <= :end", { programId })
-		// 	.setParameters({ start: startDate.toISOString(), end: endDate.toISOString() });
-
-		// const programResult = await query.getOne();
-
 		const programResult = await this.programRepository
-			.createQueryBuilder("program")
-			.leftJoinAndSelect("program.programPromoters", "programPromoters")
-			.leftJoinAndSelect("programPromoters.promoter", "promoter")
-			.where("program.programId = :programId", { programId })
-			.andWhere("promoter.createdAt <= :end", { end: endDate.toISOString() })
+			.createQueryBuilder('program')
+			.leftJoinAndSelect('program.programPromoters', 'programPromoters')
+			.leftJoinAndSelect('programPromoters.promoter', 'promoter')
+			.where('program.programId = :programId', { programId })
+			.andWhere('promoter.createdAt <= :end', { end: endDate.toISOString() })
 			.getOne();
-			
+
 		if (!programResult) {
 			this.logger.warn(`Warning. No data found for Program ${programId} for period: ${startDate} - ${endDate}`);
 		}
 
 		const programPromoters = programResult?.programPromoters ?? [];
-		const promoterIds = programPromoters.map(pp => pp.promoter.promoterId);
-		const numPromoters = promoterIds.length;
+		const promoterIds = programPromoters
+			.map((programPromoter) => programPromoter.promoter?.promoterId)
+			.filter((promoterId): promoterId is string => Boolean(promoterId));
 
-		const signUps = await this.signUpRepository.find({
-			where: {
-				promoterId: In(promoterIds),
-				createdAt: Between(startDate, endDate),
-			},
-		});
-		// tracks no. of signups for each promoter
-		const promoterSignUpsMap: Map<string, SignUp[]> = new Map();
-		signUps.forEach(signUp => {
-			if (!promoterSignUpsMap.has(signUp.promoterId)) {
-				promoterSignUpsMap.set(signUp.promoterId, []);
+		const promoterMetricsMap: Map<string, PromoterAggregatedMetrics> = new Map();
+		programPromoters.forEach((programPromoter) => {
+			const promoter = programPromoter.promoter;
+			if (promoter) {
+				promoterMetricsMap.set(promoter.promoterId, {
+					promoterId: promoter.promoterId,
+					promoterName: promoter.name,
+					status: promoter.status,
+					signUps: 0,
+					purchases: 0,
+					revenue: 0,
+					commissionOnSignUps: 0,
+					commissionOnPurchases: 0,
+				});
 			}
+		});
 
-			promoterSignUpsMap.get(signUp.promoterId)!.push(signUp);
-		});
-		
-		// tracks no. of purchases for each promoter
-		const purchases = await this.purchaseRepository.find({
-			where: {
-				promoterId: In(promoterIds),
-				createdAt: Between(startDate, endDate),
-			},
-		});
-		const promoterPurchasesMap: Map<string, Purchase[]> = new Map();
-		purchases.forEach(purchase => {
-			if (!promoterPurchasesMap.has(purchase.promoterId)) {
-				promoterPurchasesMap.set(purchase.promoterId, []);
-			}
+		const summaryMetrics: ProgramSummaryMetrics = {
+			totalSignUps: 0,
+			totalPurchases: 0,
+			totalRevenue: 0,
+			totalSignUpCommission: 0,
+			totalPurchaseCommission: 0,
+		};
 
-			promoterPurchasesMap.get(purchase.promoterId)!.push(purchase);
-		});
-		
-		// tracks commission for each promoter
-		const promoterCommissionsMap: Map<string, Commission[]> = new Map();
-		const commissions = await this.commissionRepository.find({
-			where: {
-				promoterId: In(promoterIds),
-				createdAt: Between(startDate, endDate),
-			},
-		});
-		commissions.forEach(commission => {
-			if (!promoterCommissionsMap.has(commission.promoterId)) {
-				promoterCommissionsMap.set(commission.promoterId, []);
-			}
+		if (promoterIds.length > 0) {
+			const signUpStats = await this.signUpRepository
+				.createQueryBuilder('signUp')
+				.select('signUp.promoterId', 'promoterId')
+				.addSelect('COUNT(*)', 'signUpCount')
+				.where('signUp.promoterId IN (:...promoterIds)', { promoterIds })
+				.andWhere('signUp.createdAt >= :startDate', { startDate: startDate.toISOString() })
+				.andWhere('signUp.createdAt <= :endDate', { endDate: endDate.toISOString() })
+				.groupBy('signUp.promoterId')
+				.getRawMany();
 
-			promoterCommissionsMap.get(commission.promoterId)!.push(commission);
-		});
+			signUpStats.forEach((row) => {
+				const promoterId: string = row.promoterId;
+				const count = Number(row.signUpCount ?? 0);
+				summaryMetrics.totalSignUps += count;
+
+				const metrics = promoterMetricsMap.get(promoterId);
+				if (metrics) {
+					metrics.signUps = count;
+				}
+			});
+
+			const purchaseStats = await this.purchaseRepository
+				.createQueryBuilder('purchase')
+				.select('purchase.promoterId', 'promoterId')
+				.addSelect('COUNT(*)', 'purchaseCount')
+				.addSelect('COALESCE(SUM(purchase.amount), 0)', 'totalAmount')
+				.where('purchase.promoterId IN (:...promoterIds)', { promoterIds })
+				.andWhere('purchase.createdAt >= :startDate', { startDate: startDate.toISOString() })
+				.andWhere('purchase.createdAt <= :endDate', { endDate: endDate.toISOString() })
+				.groupBy('purchase.promoterId')
+				.getRawMany();
+
+			purchaseStats.forEach((row) => {
+				const promoterId: string = row.promoterId;
+				const count = Number(row.purchaseCount ?? 0);
+				const amount = Number(row.totalAmount ?? 0);
+
+				summaryMetrics.totalPurchases += count;
+				summaryMetrics.totalRevenue += amount;
+
+				const metrics = promoterMetricsMap.get(promoterId);
+				if (metrics) {
+					metrics.purchases = count;
+					metrics.revenue = amount;
+				}
+			});
+
+			const commissionStats = await this.commissionRepository
+				.createQueryBuilder('commission')
+				.select('commission.promoterId', 'promoterId')
+				.addSelect('commission.conversionType', 'conversionType')
+				.addSelect('COALESCE(SUM(commission.amount), 0)', 'totalAmount')
+				.where('commission.promoterId IN (:...promoterIds)', { promoterIds })
+				.andWhere('commission.createdAt >= :startDate', { startDate: startDate.toISOString() })
+				.andWhere('commission.createdAt <= :endDate', { endDate: endDate.toISOString() })
+				.groupBy('commission.promoterId')
+				.addGroupBy('commission.conversionType')
+				.getRawMany();
+
+			commissionStats.forEach((row) => {
+				const promoterId: string = row.promoterId;
+				const amount = Number(row.totalAmount ?? 0);
+				const conversionType = row.conversionType as conversionTypeEnum;
+
+				if (conversionType === conversionTypeEnum.SIGNUP) {
+					summaryMetrics.totalSignUpCommission += amount;
+				} else if (conversionType === conversionTypeEnum.PURCHASE) {
+					summaryMetrics.totalPurchaseCommission += amount;
+				}
+
+				const metrics = promoterMetricsMap.get(promoterId);
+				if (metrics) {
+					if (conversionType === conversionTypeEnum.SIGNUP) {
+						metrics.commissionOnSignUps = amount;
+					} else if (conversionType === conversionTypeEnum.PURCHASE) {
+						metrics.commissionOnPurchases = amount;
+					}
+				}
+			});
+		}
 
 		const programWorkbookConverter = new ProgramWorkbookConverter();
 		const programSheetJsonWorkbook = programWorkbookConverter.convertFrom(
 			programId,
-			numPromoters, 
-			programResult, 
-			signUps, 
-			purchases, 
-			commissions, 
-			promoterSignUpsMap,
-			promoterPurchasesMap,
-			promoterCommissionsMap,
-			startDate, 
-			endDate
+			programResult ?? null,
+			programPromoters,
+			summaryMetrics,
+			promoterMetricsMap,
+			startDate,
+			endDate,
 		);
 
 		const workbook = ProgramWorkbook.toXlsx(programSheetJsonWorkbook);
@@ -787,10 +820,8 @@ export class ProgramService {
 		const promotersSheet = XLSX.utils.aoa_to_sheet(promotersSheetData);
 
 		// Remove the snake_case sheets
-		workbook.SheetNames = workbook.SheetNames.filter(name => 
-			!name.includes('_sheet')
-		);
-		
+		workbook.SheetNames = workbook.SheetNames.filter((name) => !name.includes('_sheet'));
+
 		// adding sheets to workbook
 		XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 		XLSX.utils.book_append_sheet(workbook, promotersSheet, 'Promoters');
